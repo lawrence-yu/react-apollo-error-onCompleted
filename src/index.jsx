@@ -1,6 +1,6 @@
 /*** APP ***/
 import React, { useState } from "react";
-import { createRoot } from "react-dom/client";
+import { render } from "react-dom";
 import {
   ApolloClient,
   ApolloProvider,
@@ -153,9 +153,9 @@ function App() {
 }
 
 const container = document.getElementById("root");
-const root = createRoot(container);
-root.render(
+render(
   <ApolloProvider client={client}>
     <App />
-  </ApolloProvider>
+  </ApolloProvider>,
+  container
 );
