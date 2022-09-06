@@ -13,9 +13,23 @@ import {
 import { link } from "./link.js";
 import "./index.css";
 
+const client = new ApolloClient({
+  cache: new InMemoryCache(),
+  link,
+});
+
 const ALL_PEOPLE = gql`
   query AllPeople {
     people {
+      id
+      name
+    }
+  }
+`;
+
+const SINGLE_PERSON = gql`
+  query SinglePerson($id: ID!) {
+    person(id: $id) {
       id
       name
     }
@@ -31,12 +45,60 @@ const ADD_PERSON = gql`
   }
 `;
 
+const PersonComponent: React.FC<{ id: string }> = ({ id }) => {
+  const [completedCount, setCompletedCount] = React.useState(0);
+  const [enabled, setEnabled] = React.useState(false);
+  const handleCompleted = React.useCallback(() => {
+    setCompletedCount((c) => c + 1);
+  }, [setCompletedCount]);
+
+  const { data } = useQuery(SINGLE_PERSON, {
+    variables: { id },
+    onCompleted: handleCompleted,
+  });
+
+  const appendToName = React.useCallback(() => {
+    const personResult = client.readQuery({
+      query: SINGLE_PERSON,
+      variables: { id },
+    });
+
+    if (!personResult) {
+      return;
+    }
+
+    client.writeQuery({
+      query: SINGLE_PERSON,
+      variables: { id },
+      data: {
+        ...personResult,
+        person: {
+          ...personResult.person,
+          name: personResult.person.name + "1",
+        },
+      },
+    });
+  }, [id]);
+
+  const handleClick = React.useCallback(() => {
+    appendToName();
+  }, [appendToName]);
+
+  return (
+    <div>
+      <button onClick={handleClick}>Update person's name via writeQuery</button>
+      <div>
+        In 3.4.x, the onCompleted callback was not called from these cache
+        updates
+      </div>
+      <div>onCompleted count: {completedCount}</div>
+    </div>
+  );
+};
+
 function App() {
-  const [name, setName] = useState('');
-  const {
-    loading,
-    data,
-  } = useQuery(ALL_PEOPLE);
+  const [name, setName] = useState("");
+  const { loading, data } = useQuery(ALL_PEOPLE);
 
   const [addPerson] = useMutation(ADD_PERSON, {
     update: (cache, { data: { addPerson: addPersonData } }) => {
@@ -46,10 +108,7 @@ function App() {
         query: ALL_PEOPLE,
         data: {
           ...peopleResult,
-          people: [
-            ...peopleResult.people,
-            addPersonData,
-          ],
+          people: [...peopleResult.people, addPersonData],
         },
       });
     },
@@ -67,12 +126,12 @@ function App() {
           type="text"
           name="name"
           value={name}
-          onChange={evt => setName(evt.target.value)}
+          onChange={(evt) => setName(evt.target.value)}
         />
         <button
           onClick={() => {
             addPerson({ variables: { name } });
-            setName('');
+            setName("");
           }}
         >
           Add person
@@ -83,19 +142,15 @@ function App() {
         <p>Loading…</p>
       ) : (
         <ul>
-          {data?.people.map(person => (
+          {data?.people.map((person) => (
             <li key={person.id}>{person.name}</li>
           ))}
         </ul>
       )}
+      <PersonComponent id={2} />
     </main>
   );
 }
-
-const client = new ApolloClient({
-  cache: new InMemoryCache(),
-  link
-});
 
 const container = document.getElementById("root");
 const root = createRoot(container);
