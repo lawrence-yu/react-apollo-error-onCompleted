@@ -1,6 +1,7 @@
 /*** APP ***/
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { render } from "react-dom";
 import {
   ApolloClient,
   ApolloProvider,
@@ -48,8 +49,13 @@ const ADD_PERSON = gql`
 const PersonComponent: React.FC<{ id: string }> = ({ id }) => {
   const [completedCount, setCompletedCount] = React.useState(0);
   const [enabled, setEnabled] = React.useState(false);
+  const [counter, setCounter] = React.useState(0);
   const handleCompleted = React.useCallback(() => {
+    // Without any state setter in this callback, the infinite loop wouldn't
+    // happen.
     setCompletedCount((c) => c + 1);
+    // Even if it should be a no-op state update.
+    // setCompletedCount(0);
   }, [setCompletedCount]);
 
   const { data } = useQuery(SINGLE_PERSON, {
@@ -57,35 +63,49 @@ const PersonComponent: React.FC<{ id: string }> = ({ id }) => {
     onCompleted: handleCompleted,
   });
 
-  const appendToName = React.useCallback(() => {
-    const personResult = client.readQuery({
-      query: SINGLE_PERSON,
-      variables: { id },
-    });
-
-    if (!personResult) {
-      return;
+  React.useEffect(() => {
+    if (enabled) {
+      // The infinite loop triggered by onCompleted -> effect -> onCompleted ->
+      // etc. is one that doesn't even allow this microtask to be resolved that
+      // would terminate the loop.
+      window.setTimeout(() => {
+        setEnabled(false);
+      }, 0);
     }
+  }, [enabled]);
 
-    client.writeQuery({
-      query: SINGLE_PERSON,
-      variables: { id },
-      data: {
-        ...personResult,
-        person: {
-          ...personResult.person,
-          name: personResult.person.name + "1",
+  React.useEffect(() => {
+    if (data && enabled) {
+      const personResult = client.readQuery({
+        query: SINGLE_PERSON,
+        variables: { id },
+      });
+
+      if (!personResult) {
+        return;
+      }
+
+      client.writeQuery({
+        query: SINGLE_PERSON,
+        variables: { id },
+        data: {
+          ...personResult,
+          person: {
+            ...personResult.person,
+            name: personResult.person.name + "1",
+          },
         },
-      },
-    });
-  }, [id]);
+      });
+    }
+  }, [data, enabled]);
 
   const handleClick = React.useCallback(() => {
-    appendToName();
-  }, [appendToName]);
+    setEnabled(true);
+  }, []);
 
   return (
     <div>
+      <div>{enabled ? "Enabled" : "Disabled"}</div>
       <button onClick={handleClick}>Update person's name via writeQuery</button>
       <div>
         In 3.4.x, the onCompleted callback was not called from these cache
@@ -153,9 +173,10 @@ function App() {
 }
 
 const container = document.getElementById("root");
-const root = createRoot(container);
-root.render(
+// const root = createRoot(container);
+render(
   <ApolloProvider client={client}>
     <App />
-  </ApolloProvider>
+  </ApolloProvider>,
+  container
 );
